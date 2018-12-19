@@ -1,0 +1,619 @@
+Author: Antonio Colaprico, PhD
+
+# Permutation analysis was performed in order to determine the FDR for each histone modification for macs2 bdgdiff differential peak calling
+# For each histone modification, differential peak calling was performed 100 times, using random pools of young and aged HSCe
+
+# This code contains the following steps:
+# 1) Randomly select samples to pool
+# 2) Merge samples together for each random pool
+# 3) Use macs2 to call peaks on the pools
+# 4) Perform differential peak calling using macs2 bdgdiff for a total of 100 times for each histone mark
+# 5) Calculate the adjusted p-values using the significance analysis of microarrays (SAM) method
+
+
+
+### 1) Randomly select samples to Pool
+
+
+setwd("working_dir")
+
+NumberOfPermutations <- 100
+set.seed(12345)
+HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+
+for ( h in 1: length(HistoneMarks)){
+
+curHistoneMark <- HistoneMarks[h]
+HistoneTable=read.table(paste0(curHistoneMark,"_For_Permutations.txt"), sep="\t",stringsAsFactors=FALSE, header=TRUE)
+
+PermutationsNames <- paste0("P",1:NumberOfPermutations)
+
+sizeA <- round(nrow(HistoneTable) / 2 )
+sizeB <- nrow(HistoneTable) - sizeA
+
+SamplesNamesCurHistone <- HistoneTable$Sample_ID
+
+PermutationsSamplesTabA <- combn(SamplesNamesCurHistone,sizeA)
+PermutationsSamplesTabA <- PermutationsSamplesTabA[,1:NumberOfPermutations] 
+  
+colnames(PermutationsSamplesTabA) <- paste0(PermutationsNames,"_A")
+
+PermutationsSamplesTabB <- matrix(0,sizeB,NumberOfPermutations )
+colnames(PermutationsSamplesTabB) <- paste0(PermutationsNames,"_B")
+
+
+for ( iq in 1 : ncol(PermutationsSamplesTabA)){
+  curPermSamplesA <- PermutationsSamplesTabA[,iq]
+  curPermSamplesB <- setdiff(SamplesNamesCurHistone, curPermSamplesA)
+  
+  PermutationsSamplesTabB[,paste0("P",iq,"_B")] <- curPermSamplesB
+  
+}
+
+
+CombinationsLetters <- c("A","B")
+
+for ( ir in 1:length(CombinationsLetters)){
+  
+  CurLetter <- CombinationsLetters[ir]
+HistoneList <- vector("list", length(PermutationsNames))
+names(HistoneList) <- paste0(curHistoneMark,"_",PermutationsNames,"_",CurLetter)
+
+if(CurLetter =="A") {CurTabHistones <- PermutationsSamplesTabA}
+if(CurLetter =="B") {CurTabHistones <- PermutationsSamplesTabB}
+
+for(il in 1:length(HistoneList)){
+  CurSamples <- CurTabHistones[,il]
+  HistoneList[[il]] <- HistoneTable[HistoneTable$Sample_ID %in% CurSamples,]
+}
+
+save(HistoneList, file = paste0(curHistoneMark,"_",CurLetter,"_HistoneListNew.Rdata"))
+
+}
+
+
+} # close histoneMarks
+
+
+
+
+
+### 2) Merge samples together for each random pool.
+# Will perform for both the IP and its corresponding Input.
+
+
+MergeBamIP <- function(token,curHistone){
+    
+  
+  HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+  
+    curHistoneMark <- HistoneMarks[curHistone]
+    
+    print(paste0("Processing..n..",j,"...", curHistoneMark))
+    
+    CombinationsLetters <- c("A","B")
+    
+    NumberOfPermutations <- 100
+    
+    PermutationsNames <- paste0("P",1:NumberOfPermutations)
+    
+    for ( ir in 1:length(CombinationsLetters)){
+      
+      CurLetter <- CombinationsLetters[ir]
+      
+      PermutationLetters <- paste0(curHistoneMark,"_",PermutationsNames,"_",CurLetter)
+    
+    curHistoneMark_letter <- PermutationLetters[token]
+    folderToSave <- "/home/ubuntu/UMR/"
+    folderToLoad <- "/home/ubuntu/Aging/"
+    
+    setwd(folderToSave)
+    load(paste0(curHistoneMark,"_",CurLetter,"_HistoneListNew.Rdata"))
+    #print(names(HistoneList))
+    
+    CurHistoneAndMark <- HistoneList[[curHistoneMark_letter]]
+    
+    DataID_IP_cols <- c("Sample_ID", "Input_ID")
+    
+    for (k  in 1:2){
+      
+      curDataID_IP_cols <- DataID_IP_cols[k]
+      
+      if(curDataID_IP_cols == "Sample_ID") {
+        curHistoneMark_letter <- curHistoneMark_letter
+      }
+      
+      if(curDataID_IP_cols == "Input_ID") {
+        curHistoneMark_letter <- paste0(curHistoneMark_letter, "_IN")
+      }
+      
+      stringTorun <- paste0("nohup samtools merge ",folderToSave,curHistoneMark_letter, ".bam")
+      
+      stringStep<-NULL
+      
+      for( is in 1:nrow(CurHistoneAndMark)){
+        stringTorunCur <- paste0(folderToLoad,"Sample_", CurHistoneAndMark[is,curDataID_IP_cols], ".sorted", ".bam")
+        if(is == nrow(CurHistoneAndMark)) {
+          stringTorunCur <- paste0(folderToLoad,"Sample_", CurHistoneAndMark[is,curDataID_IP_cols], ".sorted", ".bam &")
+        }
+         stringStep <- paste(stringStep,stringTorunCur )
+      }
+      
+      fullString <- paste0(stringTorun," ",stringStep)
+      print(fullString)
+      system(fullString)
+    }
+
+    
+    }
+}
+
+
+setwd("/home/ubuntu/UMR")
+#source("./MergeBamIP_Amazon.R")
+
+j<-1
+
+for ( i in 41:50){
+  MergeBamIP(token = i,curHistone = 4)
+}
+
+
+for ( i in 11:30){
+  MergeBamIP(token = i,curHistone = 4)
+}
+
+
+
+
+
+### 3) Call peaks using MACS2 
+
+
+CallPeaks <- function(token,curHistone,CurLetter){
+ 
+  HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+  
+  curHistoneMark <- HistoneMarks[curHistone]
+
+  #CombinationsLetters <- c("A","B")
+  
+  NumberOfPermutations <- 100
+  
+  PermutationsNames <- paste0("P",1:NumberOfPermutations)
+  
+  #for ( ir in 1:length(CombinationsLetters)){
+    
+    #CurLetter <- CombinationsLetters[ir]
+    
+    PermutationLetters <- paste0(curHistoneMark,"_",PermutationsNames,"_",CurLetter)
+    
+    curHistoneMark_letter <- PermutationLetters[token]
+    
+    if( token >=1 && token <= 20) {folderToSave <- "/home/ubuntu/UMR/"}
+    if( token >=21 && token <= 40) {folderToSave <- "/home/ubuntu/UMR/"}
+    if( token >=41 && token <= 60) {folderToSave <- "/home/ubuntu/UMR/"}
+    if( token >=61 && token <= 80) {folderToSave <- "/home/ubuntu/UMR/"}
+    if( token >=81 && token <= 100) {folderToSave <- "/home/ubuntu/UMR/"}
+  
+   
+  folderPath <-gsub("UMR","macs2", folderToSave)
+  
+  setwd(folderPath)
+  
+      if(curHistoneMark=="H3K4me1") {
+       
+        stringTorun <- paste0("nohup /path/macs2 callpeak -t ")
+        stringTorun1 <- paste0(folderToSave,curHistoneMark_letter)
+        stringTorun2 <- paste0(".bam -c ", stringTorun1,"_IN.bam -f BAM -B -n ",curHistoneMark_letter," -g hs --nomodel -q 0.0001 --bw 250 &")
+        
+        fullString <- paste0(stringTorun,
+                             stringTorun1,
+                             stringTorun2)
+        
+         }
+      
+    if(curHistoneMark=="H3K4me3") {
+      
+      stringTorun <- paste0("nohup /path/macs2 callpeak -t ")
+      stringTorun1 <- paste0(folderToSave,curHistoneMark_letter)
+      stringTorun2 <- paste0(".bam -c ", stringTorun1,"_IN.bam -f BAM -B -n ",curHistoneMark_letter," -g hs --nomodel -q 0.0001 --bw 250 &")
+      
+      
+      fullString <- paste0(stringTorun,
+                           stringTorun1,
+                           stringTorun2)
+      
+    }
+    
+    if(curHistoneMark=="H3K27ac") {
+      
+      stringTorun <- paste0("nohup /path/macs2 callpeak -t ")
+      stringTorun1 <- paste0(folderToSave,curHistoneMark_letter)
+      stringTorun2 <- paste0(".bam -c ", stringTorun1,"_IN.bam -f BAM -B -n ",curHistoneMark_letter," -g hs --nomodel -q 0.0001 --bw 250 &")
+      
+      
+      fullString <- paste0(stringTorun,
+                           stringTorun1,
+                           stringTorun2)
+      
+    }
+    
+      
+      
+      if(curHistoneMark=="H3K27me3") {
+        
+        stringTorun <- paste0("nohup /path/macs2 callpeak -t ")
+        stringTorun1 <- paste0(folderToSave,curHistoneMark_letter)
+        stringTorun2 <- paste0(".bam -c ", stringTorun1,"_IN.bam -f BAM -B -n ",curHistoneMark_letter," -g hs --nomodel --broad --bw 250 &")
+        
+        
+        fullString <- paste0(stringTorun,
+                             stringTorun1,
+                             stringTorun2)
+        
+      }
+      
+      print(fullString)
+      system(fullString)
+      
+  }
+      
+      
+#}
+
+
+setwd("/home/ubuntu/UMR")
+#source("./MergeBamIP_Amazon.R")
+
+for ( i in 1:10){
+  CallPeaks(token = i,curHistone = 4, CurLetter = "A")
+}
+
+
+
+
+
+### 4) Differential Peak Calling Using macs2 bdgdiff 
+
+
+CallDiffPeaks <- function(token,curHistone){
+  
+  require(base)
+  
+  HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+  
+  curHistoneMark <- HistoneMarks[curHistone]
+  
+  NumberOfPermutations <- 100
+  
+  PermutationsNames <- paste0("P",1:NumberOfPermutations)
+ 
+  PermutationA <- paste0(PermutationsNames,"_","A")
+  PermutationB <- paste0(PermutationsNames,"_","B")
+  curHistoneMark_letterA <- PermutationA[token]
+  curHistoneMark_letterB <- PermutationB[token]
+  
+  if( token >=1 && token <= 20) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=21 && token <= 40) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=41 && token <= 60) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=61 && token <= 80) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=81 && token <= 100) {folderToLoad <- "/home/ubuntu/macs2/"}
+  
+  folderToWork <- gsub("macs2","bdgdiff",folderToLoad)
+  
+  setwd(folderToWork)
+  
+  
+  
+
+    TAB_hMcur <- c(curHistoneMark_letterA,curHistoneMark_letterB)
+       
+        fileTAGs1 <- paste0(folderToLoad,curHistoneMark,"_",TAB_hMcur[1],"_peaks.xls")
+        fileTAGs2 <- paste0(folderToLoad,curHistoneMark,"_",TAB_hMcur[2],"_peaks.xls")
+        
+       
+        FolderList <- list.files(folderToLoad)
+        
+        if ( length(intersect(FolderList, paste0(curHistoneMark,"_",TAB_hMcur[1],"_peaks.xls")) )==0){
+          print(paste0(curHistoneMark,"_",TAB_hMcur[1],"_peaks.xls"))
+          print("not found")
+          next
+        }
+        
+        if ( length(intersect(FolderList, paste0(curHistoneMark,"_",TAB_hMcur[2],"_peaks.xls")) )==0){
+          print(paste0(curHistoneMark,"_",TAB_hMcur[2],"_peaks.xls"))
+          print("not found")
+          next
+        }
+        
+        nTAGs1 <- readLines(fileTAGs1)
+        nTAGs2 <- readLines(fileTAGs2)
+        
+        keyTosearch <- "tags after filtering in treatment:"
+        nTAGs1_tab <- nTAGs1[grep(keyTosearch,nTAGs1)]
+        nTAGs1_str <- substr(nTAGs1_tab, nchar(keyTosearch) + 4, nchar(nTAGs1_tab))
+        
+        keyTosearch <- "tags after filtering in treatment:"
+        nTAGs2_tab <- nTAGs2[grep(keyTosearch,nTAGs2)]
+        nTAGs2_str <- substr(nTAGs2_tab, nchar(keyTosearch) + 4, nchar(nTAGs2_tab))
+        
+        
+        
+        stringTorun <- paste0("nohup /path/macs2 bdgdiff")
+        stringTorun1 <- paste0(" --t1 ", folderToLoad,curHistoneMark,"_",TAB_hMcur[1],"_treat_pileup.bdg")
+        stringTorun2 <- paste0(" --c1 ", folderToLoad,curHistoneMark,"_",TAB_hMcur[1],"_control_lambda.bdg")
+        stringTorun3 <- paste0(" --t2 ", folderToLoad,curHistoneMark,"_",TAB_hMcur[2],"_treat_pileup.bdg")
+        stringTorun4 <- paste0(" --c2 ", folderToLoad,curHistoneMark,"_",TAB_hMcur[2],"_control_lambda.bdg")
+        stringTorun5 <- paste0(" --d1 ", nTAGs1_str, " --d2 ", nTAGs2_str," --o-prefix ",curHistoneMark,"_",TAB_hMcur[1],"vs",TAB_hMcur[2]," &")
+        
+        
+        
+         fullString <- paste0(stringTorun,
+                             stringTorun1,
+                             stringTorun2,
+                             stringTorun3,
+                             stringTorun4,
+                             stringTorun5)
+        
+         
+         
+         
+      
+      print(fullString)
+      system(fullString)
+      
+}
+      
+      
+setwd("/home/ubuntu/UMR")
+#source("./MergeBamIP_Amazon.R")
+
+
+coinStart <- 71
+coinStop <- 80
+
+
+j<-1
+for ( i in coinStart:coinStop){
+  
+  require(base)
+  
+  token <-i
+  
+  curHistone = 4
+  
+  HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+  
+  curHistoneMark <- HistoneMarks[curHistone]
+  
+  NumberOfPermutations <- 100
+  
+  PermutationsNames <- paste0("P",1:NumberOfPermutations)
+  
+  PermutationA <- paste0(PermutationsNames,"_","A")
+  PermutationB <- paste0(PermutationsNames,"_","B")
+  curHistoneMark_letterA <- PermutationA[token]
+  curHistoneMark_letterB <- PermutationB[token]
+  
+  if( token >=1 && token <= 20) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=21 && token <= 40) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=41 && token <= 60) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=61 && token <= 80) {folderToLoad <- "/home/ubuntu/macs2/"}
+  if( token >=81 && token <= 100) {folderToLoad <- "/home/ubuntu/macs2/"}
+  
+  folderToWork <- gsub("macs2","bdgdiff",folderToLoad)
+  
+  setwd(folderToWork)
+  
+  TAB_hMcur <- c(curHistoneMark_letterA,curHistoneMark_letterB)
+  
+  fileTAGs1 <- paste0(folderToLoad,curHistoneMark,"_",TAB_hMcur[1],"_peaks.xls")
+  fileTAGs2 <- paste0(folderToLoad,curHistoneMark,"_",TAB_hMcur[2],"_peaks.xls")
+  
+  
+  FolderList <- list.files(folderToLoad)
+  
+  if ( length(intersect(FolderList, paste0(curHistoneMark,"_",TAB_hMcur[1],"_peaks.xls")) )==0){
+    print(paste0(curHistoneMark,"_",TAB_hMcur[1],"_peaks.xls"))
+    print("not found")
+    next
+  }
+  
+  if ( length(intersect(FolderList, paste0(curHistoneMark,"_",TAB_hMcur[2],"_peaks.xls")) )==0){
+    print(paste0(curHistoneMark,"_",TAB_hMcur[2],"_peaks.xls"))
+    print("not found")
+    next
+  }
+  
+  CallDiffPeaks(token = i, curHistone = curHistone)
+}
+
+
+
+curHistone <-4
+
+HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+
+curHistoneMark <- HistoneMarks[curHistone]
+
+missingSamples <- gsub(paste0(curHistoneMark,"_P"),"",missingSamples)
+missingSamples <- gsub("_B_c3.0_common.bed","",missingSamples)
+
+missingSamplesList <- strsplit(missingSamples,"_")
+# 
+
+for ( i in 1:length(missingSamplesList)){
+  CallDiffPeaks(token = as.numeric(missingSamplesList[[i]][1]),
+            curHistone = curHistone)
+}
+
+
+
+HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+
+
+
+
+
+### 5) Use the SAM method to calculate the FDR:
+
+
+# A) Generate a file containing the results fo the differential peak calling
+
+WorkingPath <- "/working_dir/"
+setwd(WorkingPath)
+
+HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+
+OutputForPermutations <- read.xlsx("./Output_For_Permutations.xlsx")
+
+TABCombination <-combn(letters[1:15], 2)
+
+OutputForPermutations_merged <- NULL
+
+OutputForPermutations <- cbind( SamplesGrp1 = rep(0,nrow(OutputForPermutations)),
+                                SamplesGrp2 = rep(0,nrow(OutputForPermutations)),
+                                OutputForPermutations)
+
+for ( j in 1:length(HistoneMarks)){
+  
+  curHistoneMark <- HistoneMarks[j]
+  FolderList <- list.files(paste0(WorkingPath, "bdgdiff_100AB/bdgdiff_",curHistoneMark,"_newAB/"))
+  FolderList <- FolderList[grep(curHistoneMark, FolderList)]
+  
+  print(paste0("Processing..n..",j,"...", curHistoneMark))
+  
+  CombinationsLetters <- c("A","B")
+  
+  NumberOfPermutations <- 100
+  
+  PermutationsNames <- paste0("P",1:NumberOfPermutations)
+  
+  # adding information on samples
+  
+  for ( token in 1: length(PermutationsNames)){
+  TAB_hMcur <- toupper(PermutationsNames[token])
+  
+  TAB_hMcur1 <- paste0(TAB_hMcur,"_A")
+  TAB_hMcur2 <- paste0(TAB_hMcur,"_B")
+  
+  load(paste0(curHistoneMark,"_","A","_HistoneListNew.Rdata"))
+  HistoneList1 <- HistoneList
+  
+  load(paste0(curHistoneMark,"_","B","_HistoneListNew.Rdata"))
+  HistoneList2 <- HistoneList
+  
+  ComparisonCurA <- paste0(curHistoneMark,"_",TAB_hMcur1)
+  ComparisonCurB <- paste0(curHistoneMark,"_",TAB_hMcur2)
+  ComparisonCur <- paste0(curHistoneMark,"_",TAB_hMcur1,"vs",TAB_hMcur2)
+
+  print(paste0(token, "..", ComparisonCur))
+  
+  OutputForPermutations$Group.1[1] <- TAB_hMcur1
+  OutputForPermutations$Group.2[1] <- TAB_hMcur2
+  
+  OutputForPermutations$Histone.Mark[1] <- curHistoneMark
+  FolderListComparison <- FolderList[grep(ComparisonCur, FolderList)]
+  
+  FolderListComparison_common <- read_csv(paste0(WorkingPath, "bdgdiff_100AB/bdgdiff_",curHistoneMark,"_newAB/", ComparisonCur, "_c3.0_common.bed"))
+  FolderListComparison_cond1 <- read_csv(paste0(WorkingPath, "bdgdiff_100AB/bdgdiff_",curHistoneMark,"_newAB/", ComparisonCur, "_c3.0_cond1.bed"))
+  FolderListComparison_cond2 <- read_csv(paste0(WorkingPath, "bdgdiff_100AB/bdgdiff_",curHistoneMark,"_newAB/", ComparisonCur, "_c3.0_cond2.bed"))
+                                          
+  OutputForPermutations$`#.of.peaks.unique.to.Group.1.(c1)`[1] <- nrow(FolderListComparison_cond1)
+  OutputForPermutations$`#.of.peaks.unique.to.Group.2.(c2)`[1] <- nrow(FolderListComparison_cond2)
+  OutputForPermutations$`#.of.common.peaks`[1] <- nrow(FolderListComparison_common)
+  
+  curHistoneMark_letter1 <- paste0(curHistoneMark,"_",TAB_hMcur1)
+  curHistoneMark_letter2 <- paste0(curHistoneMark,"_",TAB_hMcur2)
+  
+  #load(paste0(curHistoneMark,"_HistoneList.Rdata"))
+  #print(names(HistoneList))
+  
+  CurHistoneAndMark1 <- HistoneList1[[curHistoneMark_letter1]]
+  CurHistoneAndMark2 <- HistoneList2[[curHistoneMark_letter2]]
+  
+  
+  OutputForPermutations$`#.of.young.samples.in.Group.1`[1] <- 0
+  OutputForPermutations$`#.of.young.samples.in.Group.2`[1] <- 0
+  
+  OutputForPermutations$`#.of.aged.samples.in.Group.1`[1] <- 0
+  OutputForPermutations$`#.of.aged.samples.in.Group.2`[1] <- 0
+  
+  
+  OutputForPermutations$`#.of.young.samples.in.Group.1`[1] <- sum(CurHistoneAndMark1$Age < 65)
+  OutputForPermutations$`#.of.young.samples.in.Group.2`[1] <- sum(CurHistoneAndMark2$Age < 65)
+  
+  OutputForPermutations$`#.of.aged.samples.in.Group.1`[1] <- sum(CurHistoneAndMark1$Age >= 65)
+  OutputForPermutations$`#.of.aged.samples.in.Group.2`[1] <- sum(CurHistoneAndMark2$Age >= 65)
+  
+  
+  
+  OutputForPermutations$SamplesGrp1[1] <- paste0(CurHistoneAndMark1$Sample_ID,collapse = ";")
+  OutputForPermutations$SamplesGrp2[1] <- paste0(CurHistoneAndMark2$Sample_ID,collapse = ";")
+  
+  OutputForPermutations_merged <- rbind(OutputForPermutations_merged, OutputForPermutations[1,])
+  }
+}
+
+save(OutputForPermutations_merged, file = "OutputForPermutations_merged_AB.Rdata")
+write.xlsx(OutputForPermutations_merged, file ="OutputForPermutations_merged_AB.xlsx")
+
+
+
+
+
+#B) Calculate the FDR
+
+# setwd("/working_dir/")
+load("./OutputForPermutations_merged_AB.Rdata")
+
+HistoneMarks <- c("H3K4me1", "H3K4me3", "H3K27ac", "H3K27me3")
+nPermutationUsed <- 100
+
+Summary_of_YvsAged_Differential_Peaks <- read_excel("./Summary of YvsAged Differential Peaks.xlsx")
+Summary_of_YvsAged_Differential_Peaks <- as.data.frame(Summary_of_YvsAged_Differential_Peaks)
+
+Summary_of_YvsAged_Differential_Peaks <- cbind(Summary_of_YvsAged_Differential_Peaks, 
+                                               FDR_cond1 = rep(0, nrow(Summary_of_YvsAged_Differential_Peaks)),
+                                               FDR_cond2 = rep(0, nrow(Summary_of_YvsAged_Differential_Peaks)),
+                                               FDR_total = rep(0, nrow(Summary_of_YvsAged_Differential_Peaks)),
+                                               nPerm = rep(0, nrow(Summary_of_YvsAged_Differential_Peaks)))
+
+
+for( k in 1: nrow(OutputForPermutations_merged)){
+  
+
+for ( j in 1:length(HistoneMarks)){
+  
+  curHistoneMark <- HistoneMarks[j]
+  posHistone <- grep(curHistoneMark,Summary_of_YvsAged_Differential_Peaks$`Condition 1` )
+  curPermutationHistone <- OutputForPermutations_merged
+  curPermutationHistone <- curPermutationHistone[curPermutationHistone$Histone.Mark %in% curHistoneMark,]
+  
+  
+  if(nrow(curPermutationHistone) > nPermutationUsed) { 
+  curPermutationHistone <- curPermutationHistone[1:nPermutationUsed,]
+  
+  }
+  
+  medianGrp2 <- median(curPermutationHistone$`#.of.peaks.unique.to.Group.2.(c2)`)
+  medianGrp1 <- median(curPermutationHistone$`#.of.peaks.unique.to.Group.1.(c1)`)
+  totalGrp<- (curPermutationHistone$`#.of.peaks.unique.to.Group.1.(c1)`) + (curPermutationHistone$`#.of.peaks.unique.to.Group.2.(c2)`)
+  medianTotal <- median(totalGrp)
+  
+  numberOftotalPeaks <- Summary_of_YvsAged_Differential_Peaks$Common[posHistone] + Summary_of_YvsAged_Differential_Peaks$`Total Differential`[posHistone]
+  
+  print(paste(curHistoneMark, numberOftotalPeaks))
+  
+
+  Summary_of_YvsAged_Differential_Peaks[posHistone, "FDR_cond1"] <- medianGrp1 / numberOftotalPeaks
+  Summary_of_YvsAged_Differential_Peaks[posHistone, "FDR_cond2"] <- medianGrp2 / numberOftotalPeaks
+  Summary_of_YvsAged_Differential_Peaks[posHistone, "FDR_total"] <- medianTotal / numberOftotalPeaks
+  Summary_of_YvsAged_Differential_Peaks[posHistone, "nPerm"] <- nrow(curPermutationHistone)
+  
+}
+}
+
+write.xlsx(Summary_of_YvsAged_Differential_Peaks, file ="YvsAged_Differential_Peaks_FDR_AB.xlsx")
+save(Summary_of_YvsAged_Differential_Peaks, file = "YvsAged_Differential_Peaks_FDR_AB.Rdata")
