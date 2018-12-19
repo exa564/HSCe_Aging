@@ -21,11 +21,11 @@ ChIP-seq for H3K4me1, H3K4me3, H3K27me3, and H3K27ac in human HSCe was performed
 
 ### k-means clustering of age-associated histone differences
 k-means clustering was performed using all peaks that had significant (LLR > 3, absolute fold-change >1.5) H3K4me1, H3K4me3, H3K27ac, or H3K27me3 changes with age (n=37,058 peaks) and R version 3.5.1 (see 'kmClusteringOfHistoneChanges').
-  -For the input matrix, scores for each histone modification, for each age group, were calculated using deeptools2 multiBigwigSummary with bigwig files that were read normalized and contained the fold-enrichment of the Pooled IP/Pooled Input (see 'FoldEnrichment_bw.py').
-  -The fold-change of aged/young was calculated for each modification for each peak using gtools. Peaks with low-counts for a given histone modification (score aged <3 and score young <3) were filtered
-  -K-means clustering of the fold-change values was then performed using base R
-  -Genomic annotation of each peak was performed using the R-package Genomation (v1.2.2), with promoter regions being defined as +/- 3000 bp of the TSS. Genomation was also used to annotate peaks to bivalent promoters and active enhancers identified in young HSCe.
-  -A heatmap of the clusters along with their annotation package was plotted using the R-package ComplexHeatmap
+  - For the input matrix, scores for each histone modification, for each age group, were calculated using deeptools2 multiBigwigSummary with bigwig files that were read normalized and contained the fold-enrichment of the Pooled IP/Pooled Input (see 'FoldEnrichment_bw.py').
+  - The fold-change of aged/young was calculated for each modification for each peak using gtools. Peaks with low-counts for a given histone modification (score aged <3 and score young <3) were filtered
+  - K-means clustering of the fold-change values was then performed using base R
+  - Genomic annotation of each peak was performed using the R-package Genomation (v1.2.2), with promoter regions being defined as +/- 3000 bp of the TSS. Genomation was also used to annotate peaks to bivalent promoters and active enhancers identified in young HSCe.
+  - A heatmap of the clusters along with their annotation package was plotted using the R-package ComplexHeatmap
   
 ## Analysis of mC (ERRBS) in aging 
 DNA methylation was profiled using ERRBS in young (n=7) and aged HSCe (n=5) (see 'ERRBS_Analysis.txt'). In order to plot a heatmap of the differentially methylated regions (DMR), the percent methylation of each DMR was calculated (see 'PercMethofDMR.py') for young and aged HSCe. 
