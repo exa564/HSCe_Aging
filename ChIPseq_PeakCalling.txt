@@ -1,0 +1,37 @@
+# Below are examples of the scripts used for peak calling and differential peak calling of H3K4me1, H3K4me3, H3K27me3, and H3K27ac. 
+# Peak calling was performed on .bam that contained unique mapped reads (see “PreprocessingChIPseq.txt”)
+# Using macs2 version 2.0.10.20131216
+
+I) Example of peak calling for H3K4me1, H3K4me3, and H3K27ac
+
+macs2 callpeak -t Young_H3K4me1.bam -c Young_Input.bam -f BAM -B -n Y_Pooled_H3K4me1 -g hs --nomodel -q 0.0001 --bw 250
+
+
+II) Example of peak calling for H3K27me3
+
+macs2 callpeak -t Young_H3K27me3.bam -c Young_H3K27me3_IN.bam -n Y_Pooled_H3K27me3 -f BAM -B -g hs --nomodel --broad --bw 250
+
+
+III) Differential peak calling example
+# For each sample, used lowest tag number described by macs2 in the .xls peak file
+
+macs2 bdgdiff --t1 Y_Pooled_H3K4me1_treat_pileup.bdg --c1 Y_Pooled_H3K4me1_control_lambda.bdg --t2 O_Pooled_H3K4me1_treat_pileup.bdg --c2 O_Pooled_H3K4me1_control_lambda.bdg --d1 66945460  --d2 89768280  --o-prefix Y_vs_O_H3K4me1
+
+
+IV) Finding fold-change of IP at differential peaks
+
+A)  Calculate enrichment for each pooled sample at regions with differential peaks
+
+# Using deeptools 2.5.0
+# For input bigwig files, using bigwig files that contain the fold-enrichment (IP/Input), normalized to million reads (see “FoldEnrichment_bw.py”)
+
+
+multiBigwigSummary BED-file -b Y_Pooled_H3K4me1_FE.bw O_Pooled_H3K4me1_FE.bw -out H3K4me1_YvsO_c1.npz --outRawCounts H3K4me1_YvsO_c1.tab --labels Y_H3K4me1 O_H3K4me1 --BED Y_vs_O_H3K4me1_c3.0_cond1.bed -p 15
+
+
+B) Use R-package gtools to calculate fold-change
+
+> library(gtools)
+> H3K4me1_c1_bw=read.table("H3K4me1_YvsO_c1.tab", sep="\t", header=F, stringsAsFactors=FALSE, skip=1, col.names=c("chr", "start", "end", "Y_H3K4me1", "O_H3K4me1")
+> H3K4me1_c1_bw$FoldChange_OY=foldchange(H3K4me1_c1_bw$O_H3K4me1, H3K4me1_c1_bw$Y_H3K4me1)
+
