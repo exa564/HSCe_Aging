@@ -1,0 +1,58 @@
+The below scripts were used to process ChIP-seq. For each sample, both an Input and IP were sequenced.
+
+
+I) Trim Illumina adapters
+# Will remove fragments below 25 basepairs and adapters
+# Using cutadapt version Cutadapt v1.12
+
+$ for f in *.fastq.gz
+> do FILENAME=`basename ${f%%.*}`
+> cutadapt -a AGATCGGAAGAGCACACGTCTGAACTCCAGTCAC -m 25 -o /Trimmed/${FILENAME}_trim.fastq.gz $f
+> done
+
+
+II) Perform fastqc
+
+fastqc  --noextract -f fastq -t 5 Sample_trim.fastq.gz 
+
+
+III) Align samples
+# Aligned all samples to hg19
+# Using bowtie v2.0.5
+# Using samtools v1.2
+
+
+$ for f in *.fastq.gz
+> do FILENAME=`basename ${f%%_*}`
+> bowtie2 -p 30 -x /GenomeReference/hg19 -U /Trimmed/$f | samtools view -Sb - > /bowtie_aligned/${FILENAME}.bam
+> done
+
+
+IV) Extract unique mapped reads (UMR)
+# Using samtools v1.2
+
+
+$ for f in *.bam
+> do FILENAME=`basename ${f%%.*}`
+> samtools view -H /bowtie_aligned/$f > /bowtie_aligned/${FILENAME}.header && samtools view //bowtie_aligned/$f | awk -F"\t" '{OFS="\t"}{if(($2==0 || $2==16) && $13 !~ /XS:i:*/) print}' | cat /bowtie_aligned/${FILENAME}.header - |samtools view -Sb -> /UMR/${FILENAME}.bam 
+> done
+
+
+V) Sort bam files
+# Using samtools v1.3
+
+$ for i in /Folder/*.bam; do j=$(echo $i | perl -lane 's/\.bam/\.sorted\.bam/g; print'); samtools sort -@ 20 -T /Folder/tmp/tmp.sorted -o $j $i; done
+
+
+VI) Index files
+
+$ for i in /Folder/*sorted.bam; do samtools index $i; done
+
+
+VII) Pool replicates for each age group
+# Using samtools v1.2
+
+
+$ samtools merge Young1_IP.sorted.bam Young2_IP.sorted.bam Young3_IP.sorted.bam > Young_IP_Pool.sorted.bam
+
+$ samtools merge Young1_Input.sorted.bam Young2_Input.sorted.bam Young3_Input.sorted.bam > Young_Input_Pool.bam
