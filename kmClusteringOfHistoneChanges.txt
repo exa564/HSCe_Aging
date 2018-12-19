@@ -1,0 +1,422 @@
+Heatmap of all differential regions
+
+# For this analysis will perform the following:
+#   (I) Make a conensus peak set of all regions with age-associated histone modifcations changes
+#   (II) Calculate the score of each histone modification (both young and aged) for each peak in the consensus peak set
+#   -Find the fold-change of aged/young for each histone modification for each peak
+#   -Filter peaks with low-counts
+#   (III) Genomic annotation of peaks
+#   (IV) Annotate peaks to enhancers and bivalent promoters
+#   (V) Perform k-means clustering and plot heatmap
+
+
+I) Generate consensus peakset
+# Will include all regions that have gains or losses of H3K27ac, H3K4me1, H3K27me3, or H3K4me3 with age
+
+A) Concatenate all files:
+
+$ /DifferentialPeaks/*_c1_FC1.5.bed  /DifferentialPeaks/*_c2_FC1.5.bed > AllDifHis.bed
+$ wc -l AllDifHis.bed
+44629 AllDifHis.bed
+
+B) Select only columns that contain chrom start stop:
+
+$ awk '{print $1"\t"$2"\t"$3}' AllDifHis.bed > AllDifHisLoc.bed
+
+C) Remove chrUn and random:
+
+$ grep -v 'chrUn\|random' AllDifHisLoc.bed  > AllDifHis_woUn.bed
+$ IntraMark]$ wc -l  AllDifHis_woUn.bed
+44558 AllDifHis_woUn.bed
+
+D) Sort file:
+
+$ sort -k1,1 -k2,2n AllDifHis_woUn.bed > AllDifHis.sort.bed
+
+E) Merge anything that overlaps by at least 1 basepair:
+
+$ bedtools merge -i AllDifHis.sort.bed > AllDifHis.merge.bed
+$ wc -l AllDifHis.merge.bed
+39376 AllDifHis.merge.bed
+
+
+
+II) Find fold-change for each mark type
+
+A) bwSummary for universe of peaks.
+# Use pooled young and aged samples that have been normalized to input using macs2 SPMR (so they contain the fold-enrichment of IP/Input and are read normalized)
+
+$ multiBigwigSummary BED-file -b /Normalized/Y_Pooled_H3K4me1_FE.bw /Normalized/A_Pooled_H3K4me1_FE.bw /Normalized/Y_Pooled_H3K4me3_FE.bw /Normalized/A_Pooled_H3K4me3_FE.bw /Normalized/Y_Pooled_H3K27me3_FE.bw /Normalized/A_Pooled_H3K27me3_FE.bw /Normalized/Y_Pooled_H3K27ac_FE.bw /Normalized/A_Pooled_H3K27ac_FE.bw -out AllDifPeaks_His.npz --outRawCounts AllDifPeaks_His.tab --labels Y_K4me1 A_K4me1 Y_K4me3 A_K4me3 Y_K27me3 A_K27me3 Y_K27ac A_K27ac --BED AllDifHis.merge.bed  -p 15
+
+The following chromosome names did not match between the the bigwig files
+chromosome	length
+chr8_gl000197_random	     37175
+chr8_gl000196_random	     38914
+chr17_gl000206_random	     41001
+ chrUn_gl000236	     41934
+ chrUn_gl000247	     36422
+ chrUn_gl000245	     36651
+ chrUn_gl000244	     39929
+ chrUn_gl000215	    172545
+ chrUn_gl000249	     38502
+ chrUn_gl000246	     38154
+*Warning*
+The resulting bed file does not contain information for the chromosomes that were not common between the bigwig files
+Number of bins found: 39376
+
+
+B) Read counts into R
+
+> library(ComplexHeatmap)
+> library(circlize)
+> library(gtools)
+> library(data.table)
+> library(chipenrich)
+> library(genomation)
+
+> sessionInfo()
+R version 3.5.1 (2018-07-02)
+Platform: x86_64-pc-linux-gnu (64-bit)
+Running under: Red Hat Enterprise Linux Server release 6.10 (Santiago)
+
+Matrix products: default
+BLAS: /home/.conda/envs/R_3.5.1/lib/R/lib/libRblas.so
+LAPACK: /home/.conda/envs/R_3.5.1/lib/R/lib/libRlapack.so
+
+locale:
+ [1] LC_CTYPE=en_US.UTF-8       LC_NUMERIC=C              
+ [3] LC_TIME=en_US.UTF-8        LC_COLLATE=en_US.UTF-8    
+ [5] LC_MONETARY=en_US.UTF-8    LC_MESSAGES=en_US.UTF-8   
+ [7] LC_PAPER=en_US.UTF-8       LC_NAME=C                 
+ [9] LC_ADDRESS=C               LC_TELEPHONE=C            
+[11] LC_MEASUREMENT=en_US.UTF-8 LC_IDENTIFICATION=C       
+
+attached base packages:
+[1] grid      stats     graphics  grDevices utils     datasets  methods  
+[8] base     
+
+other attached packages:
+[1] genomation_1.12.0     chipenrich_2.4.0      data.table_1.11.8    
+[4] circlize_0.4.4        ComplexHeatmap_1.18.1
+
+loaded via a namespace (and not attached):
+  [1] TH.data_1.0-9               colorspace_1.3-2           
+  [3] rjson_0.2.20                htmlTable_1.12             
+  [5] XVector_0.20.0              GenomicRanges_1.32.7       
+  [7] GlobalOptions_0.1.0         base64enc_0.1-3            
+  [9] rstudioapi_0.8              MatrixModels_0.4-1         
+ [11] bit64_0.9-7                 AnnotationDbi_1.42.1       
+ [13] mvtnorm_1.0-8               org.Dr.eg.db_3.6.0         
+ [15] codetools_0.2-15            splines_3.5.1              
+ [17] impute_1.54.0               chipenrich.data_2.3.0      
+ [19] knitr_1.20                  Formula_1.2-3              
+ [21] seqPattern_1.12.0           Rsamtools_1.32.3           
+ [23] gridBase_0.4-7              cluster_2.0.7-1            
+ [25] readr_1.1.1                 compiler_3.5.1             
+ [27] backports_1.1.2             assertthat_0.2.0           
+ [29] Matrix_1.2-14               lazyeval_0.2.1             
+ [31] org.Rn.eg.db_3.6.0          org.Mm.eg.db_3.6.0         
+ [33] acepack_1.4.1               htmltools_0.3.6            
+ [35] quantreg_5.36               tools_3.5.1                
+ [37] bindrcpp_0.2.2              gtable_0.2.0               
+ [39] glue_1.3.0                  GenomeInfoDbData_1.1.0     
+ [41] reshape2_1.4.3              dplyr_0.7.7                
+ [43] Rcpp_0.12.19                Biobase_2.40.0             
+ [45] Biostrings_2.48.0           nlme_3.1-137               
+ [47] rtracklayer_1.40.6          stringr_1.3.1              
+ [49] XML_3.98-1.16               polspline_1.1.13           
+ [51] org.Hs.eg.db_3.6.0          zlibbioc_1.26.0            
+ [53] MASS_7.3-51                 zoo_1.8-4                  
+ [55] scales_1.0.0                BSgenome_1.48.0            
+ [57] hms_0.4.2                   parallel_3.5.1             
+ [59] SummarizedExperiment_1.10.1 sandwich_2.5-0             
+ [61] SparseM_1.77                RColorBrewer_1.1-2         
+ [63] memoise_1.1.0               gridExtra_2.3              
+ [65] ggplot2_3.0.0               rms_5.1-2                  
+ [67] rpart_4.1-13                latticeExtra_0.6-28        
+ [69] stringi_1.2.4               RSQLite_2.1.1              
+ [71] S4Vectors_0.18.3            plotrix_3.7-4              
+ [73] checkmate_1.8.5             BiocGenerics_0.26.0        
+ [75] BiocParallel_1.14.2         shape_1.4.4                
+ [77] GenomeInfoDb_1.16.0         rlang_0.3.0                
+ [79] pkgconfig_2.0.2             matrixStats_0.54.0         
+ [81] bitops_1.0-6                lattice_0.20-35            
+ [83] purrr_0.2.5                 bindr_0.1.1                
+ [85] GenomicAlignments_1.16.0    htmlwidgets_1.3            
+ [87] bit_1.1-14                  tidyselect_0.2.5           
+ [89] plyr_1.8.4                  magrittr_1.5               
+ [91] R6_2.3.0                    IRanges_2.14.12            
+ [93] Hmisc_4.1-1                 multcomp_1.4-8             
+ [95] DelayedArray_0.6.6          DBI_1.0.0                  
+ [97] pillar_1.3.0                foreign_0.8-71             
+ [99] mgcv_1.8-24                 survival_2.42-6            
+[101] RCurl_1.95-4.11             nnet_7.3-12                
+[103] tibble_1.4.2                org.Dm.eg.db_3.6.0         
+[105] crayon_1.3.4                KernSmooth_2.23-15         
+[107] GetoptLong_0.1.7            blob_1.1.1                 
+[109] digest_0.6.18               stats4_3.5.1               
+[111] munsell_0.5.0              
+
+
+Set seed: 
+> set.seed(123)
+
+Read in table:
+> AllDif=read.table("/AllDifPeaks_His.tab", header=T, sep="\t", stringsAsFactors=F)
+
+C) Calculate fold-change for each mark
+
+> AllDif$H3K4me1_FC=foldchange(AllDif$A_K4me1, AllDif$Y_K4me1)
+> AllDif$H3K4me3_FC=foldchange(AllDif$A_K4me3, AllDif$Y_K4me3)
+> AllDif$H3K27me3_FC=foldchange(AllDif$A_K27me3, AllDif$Y_K27me3)
+> AllDif$H3K27ac_FC=foldchange(AllDif$A_K27ac, AllDif$Y_K27ac)
+
+D) Remove infinite values:
+
+> AllDif_woI <- do.call(data.frame, lapply(AllDif, function(x) {
++ replace(x, is.infinite(x) | is.na(x), 0)
++ })
++ )
+
+> head(AllDif_woI)
+   chr  start    end   Y_K4me1   O_K4me1  Y_K4me3   O_K4me3 Y_K27me3 O_K27me3
+1 chr4  71251  72138 0.5400140 0.3827169 3.304429 1.2091615 2.072049 1.324053
+2 chr4  72593  73083 0.5065452 0.4665826 2.826292 0.8855798 1.418164 1.318675
+3 chr4  84893  85568 0.3707405 0.6497904 3.175266 0.8534145 1.884464 1.193477
+4 chr4  88685  89703 0.3980294 0.5948726 3.180203 1.1379630 1.975615 1.546394
+5 chr4 106029 106332 0.6408503 0.6834399 3.689561 1.1972836 3.158352 3.831876
+6 chr4 106701 107236 2.5699171 2.3833484 5.696437 3.1987394 4.407689 4.249838
+    Y_K27ac   O_K27ac H3K4me1_FC H3K4me3_FC H3K27me3_FC H3K27ac_FC
+1 0.6970216 0.8005683  -1.411001  -2.732827   -1.564928   1.148556
+2 0.8459465 0.5241218  -1.085650  -3.191459   -1.075447  -1.614027
+3 0.3820150 0.5972593   1.752683  -3.720661   -1.578969   1.563445
+4 0.5957942 0.8162873   1.494545  -2.794646   -1.277562   1.370083
+5 0.2758615 0.4218730   1.066458  -3.081610    1.213252   1.529293
+6 0.8033282 0.8630563  -1.078280  -1.780838   -1.037143   1.074351
+
+E) Make genes with low counts have a FC of zero
+# Some genes with low scores have very high FC. So need a way to control for this
+# So if both Y and A for a mark have a score <3, will change FC to 0
+
+Example of a peak that has high FC for H3K27ac due to low score:
+
+> AllDif_woI[AllDif_woI$chr=="chr8" & AllDif_woI$start=="11567786",]
+       chr    start      end Y_K4me1  O_K4me1  Y_K4me3  O_K4me3 Y_K27me3
+33371 chr8 11567786 11568010 1.62715 2.086092 3.118842 1.020779 5.373964
+      O_K27me3     Y_K27ac  O_K27ac H3K4me1_FC H3K4me3_FC H3K27me3_FC
+33371 5.636054 0.003609509 1.150034   1.282053  -3.055353     1.04877
+      H3K27ac_FC
+33371   318.6123
+
+
+> library(data.table)
+data.table 1.11.8  Latest news: r-datatable.com
+
+> AllDif_fil3=AllDif_woI
+
+Filtering less than 3
+> AllDif_fil3$H3K4me1_FC=with(AllDif_fil3, ifelse(Y_K4me1 < 3 & O_K4me1 < 3, 0, H3K4me1_FC)) 
+> AllDif_fil3$H3K4me3_FC=with(AllDif_fil3, ifelse(Y_K4me3 < 3 & O_K4me3 < 3, 0, H3K4me3_FC)) 
+> AllDif_fil3$H3K27me3_FC=with(AllDif_fil3, ifelse(Y_K27me3 < 3 & O_K27me3 < 3, 0, H3K27me3_FC))
+> AllDif_fil3$H3K27ac_FC=with(AllDif_fil3, ifelse(Y_K27ac < 3 & O_K27ac < 3, 0, H3K27ac_FC)) 
+
+
+F) Add a column that denotes if FC for all marks ==0
+
+> AllDif_fil3$FC_sum=with(AllDif_fil3, ifelse(H3K4me1_FC==0 & H3K4me3_FC==0 & H3K27me3_FC==0 & H3K27ac_FC==0, "sumZ", "NotZ"))
+
+G) Select only those where FC is > 0 for at least one mark
+
+> AllDif_fin3=AllDif_fil3[AllDif_fil3$FC_sum=="NotZ",]
+
+> dim(AllDif_fin3)
+[1] 37058    16
+
+
+
+III) Annotate peaks to genomic location
+
+A) Make data.frame
+
+> All_df=AllDif_fin3
+
+B) Genomic annotation
+# Annotate using genomation
+# Define promoter as +/- 3 kb of TSS
+
+> library(genomation)
+> library(GenomicRanges)
+> hg.19= readTranscriptFeatures("/data/GenomeAnnotation/hg19/hg19_RefGene_d080614.bed", up.flank=3000, down.flank=3000)
+
+> All_ga=annotateWithGeneParts(as(All_df, "GRanges"), hg.19)
+
+C) Add genomic annotation info to data frame
+
+> All_df2=All_df
+> All_df2=cbind(All_df2, as.data.frame(slot(All_ga, "members")))
+>  head(All_df2)
+   chr  start    end   Y_K4me1   O_K4me1  Y_K4me3   O_K4me3  Y_K27me3  O_K27me3
+1 chr4  71251  72138 0.5400140 0.3827169 3.304429 1.2091615 2.0720488 1.3240533
+3 chr4  84893  85568 0.3707405 0.6497904 3.175266 0.8534145 1.8844637 1.1934774
+4 chr4  88685  89703 0.3980294 0.5948726 3.180203 1.1379630 1.9756147 1.5463943
+5 chr4 106029 106332 0.6408503 0.6834399 3.689561 1.1972836 3.1583517 3.8318761
+6 chr4 106701 107236 2.5699171 2.3833484 5.696437 3.1987394 4.4076887 4.2498382
+7 chr4 120189 120438 6.4550567 4.2928624 1.311294 1.2291927 0.3930375 0.8157413
+    Y_K27ac   O_K27ac H3K4me1_FC H3K4me3_FC H3K27me3_FC H3K27ac_FC FC_sum prom
+1 0.6970216 0.8005683   0.000000  -2.732827    0.000000   0.000000   NotZ    0
+3 0.3820150 0.5972593   0.000000  -3.720661    0.000000   0.000000   NotZ    0
+4 0.5957942 0.8162873   0.000000  -2.794646    0.000000   0.000000   NotZ    0
+5 0.2758615 0.4218730   0.000000  -3.081610    1.213252   0.000000   NotZ    0
+6 0.8033282 0.8630563   0.000000  -1.780838   -1.037143   0.000000   NotZ    0
+7 2.5299038 3.3527064  -1.503672   0.000000    0.000000   1.325231   NotZ    0
+  exon intron
+1    0      1
+3    0      1
+4    0      1
+5    0      1
+6    0      1
+7    0      1
+
+D) Add column that contains genomic annotation info
+# Will use these definitions:
+# promoter: prom==1 (status of exon and intron doesnt matter)
+# genebody: prom==0 & exon==1 or intron==1
+# intergenic: prom==0 & exon==0 and intron==0
+
+
+> All_df2$GenAnn=with(All_df2, ifelse(prom==1, "promoter", ifelse(prom==0 & exon==0 & intron==0, "intergenic", ifelse(prom==0 & (exon==1 | intron==1), "genebody", "NotA"))))
+
+
+E) Add column to data.frame that contains peak location as chr.start.end
+
+> All_df2$location=paste(All_df2$chr, All_df2$start, All_df2$end, sep=".")
+
+F) Annotate to gene name using chip enrich
+# Annotate to nearest TSS
+# Use RefSeq and ChIPenrich
+
+> chipenrich(All_df, out_name="All_Diff", out_path="/chipenrich/", genome="hg19_refseq", genesets=c("kegg_pathway", "panther_pathway", "biocarta_pathway", "GOBP", "GOCC", "GOMF"), method = "chipenrich", fisher_alt="two.sided", qc_plots=T, max_geneset=500, num_peak_threshold=1, n_cores=25, locusdef="nearest_tss")
+
+
+
+IV) Annotate to enhancers and bivalent promoter
+
+A) Read in file
+
+> AE_yng=read.table("/Enhancers/Yng_ActEnh_peaks.tab", header=T, stringsAsFactors=F, sep="\t")
+
+> PE_yng=read.table("/Enhancers/Yng_PoisEnh_peaks.tab", header=T, stringsAsFactors=F, sep="\t")
+
+> BP_yng=read.table("/Bivalent/Y_BivProm_peaks.tab", sep="\t", header=T, stringsAsFactors=F)
+
+B) Add column with genomic element type
+
+> AE_yng$Type="Active"
+> PE_yng$Type="Poised"
+> BP_yng$Type="Bivalent"
+
+C) Convert to genomic range
+
+> AE_yng_gr=as(AE_yng, "GRanges")
+> PE_yng_gr=as(PE_yng, "GRanges")
+> BP_yng_gr=as(BP_yng, "GRanges")
+> All_gr=as(All_df2, "GRanges")
+
+E) Create genomic range list
+
+> Enh_yng_gl=GRangesList(YngAE=AE_yng_gr, YngPE=PE_yng_gr)
+> BP_yng_gl=GRangesList(YngBP=BP_yng_gr)
+
+F) Annotate 
+
+> AnnToYngEnh=annotateWithFeatures(All_gr, Enh_yng_gl, intersect.chr=FALSE)
+> AnnToYngBP=annotateWithFeatures(All_gr, BP_yng_gl, intersect.chr=FALSE)
+
+G) Add annotation information to df 
+
+> All_df2=cbind(All_df2, as.data.frame(slot(AnnToYngEnh, "members")), as.data.frame(slot(AnnToYngBP, "members")))
+
+
+H) Add location as row.names
+
+> rownames(All_df2)=All_df2$location
+
+
+V) k-means clustering
+
+A) Make matrix of just fold-change
+
+> All_m=as.matrix(All_df2[, c(12:15)])
+
+
+B) Add row.names
+> rownames(All_m)=All_df2$location
+> head(All_m)
+
+
+C) Perform k-means clustering
+
+> m_km12=kmeans(All_m, centers=12, nstart=50)
+
+
+D) Add column to data.frame that contains cluster number
+
+> All_df2$kmClus=m_km12$cluster
+
+E) Make intitial heatmap for epi marks to get row-order
+
+> col_fun = colorRamp2(c(-14, 0, 14), c("blue", "gray95", "red"))
+> lgd=Legend(col_fun = col_fun, legend_width = unit(5, "cm"), at=c(-14,0,14))
+
+> test_hmap_km12=Heatmap(na.omit(All_m), col=col_fun, show_row_names=F, show_row_dend=F, cluster_rows=T, cluster_columns=T, clustering_method_rows = "complete", clustering_distance_rows = "euclidean", na_col="white", clustering_method_columns = "complete", clustering_distance_column = "euclidean", show_column_names=T, heatmap_legend_param = list(col_fun=col_fun, legend_direction = "horizontal", legend_width=unit(5, "cm"), at=c(-14,0,14)), width = unit(2, "cm") + max_text_width(labels),  split=All_df2$kmClus)
+
+
+F) Extract row-order
+
+> myroworder=row_order(test_hmap_km12)
+
+G) Assign New variables to clusters, so similar ones will be plotted together:
+
+> Clust_dic=data.frame(Original=c(1:12), New=c("J", "D", "G", "K", "L", "C", "H", "F", "I", "A", "B", "E"))
+> head(Clust_dic)
+  Original New
+1        1   J
+2        2   D
+3        3   G
+4        4   K
+5        5   L
+6        6   C
+
+
+> All_df2$NewClus=Clust_dic[match(All_df2$kmClus, Clust_dic$Original), "New"]
+
+H) Re-order columns of matrix
+Want order to be: H3K4me1, H3K27ac, H3K4me3, H3K27me3
+
+> All_m_reOrd=All_m[, c("H3K4me1_FC", "H3K27ac_FC", "H3K4me3_FC", "H3K27me3_FC")]
+
+
+I) Plot Heatmaps:
+# For epigenetic marks, will re-order columns. Will also plot clusters using new order
+# Will use row-order from original heatmap
+
+> hmap_km12_reOrd=Heatmap(na.omit(All_m_reOrd), col=col_fun, show_row_names=F, show_row_dend=myroworder, cluster_rows=F, cluster_columns=F, clustering_method_rows = "complete", clustering_distance_rows = "euclidean", na_col="white", show_column_names=T, heatmap_legend_param = list(col_fun=col_fun, legend_direction = "horizontal", legend_width=unit(5, "cm"), at=c(-14,0,14)), width = unit(3, "cm") + max_text_width(labels),  split=All_df2$NewClus)
+
+> hmap_ga=Heatmap(All_df2$GenAnn, name="GenomicAnn", col=c("#E7298A", "#E6AB02","#1B9E77"), width=unit(0.6, "cm"), show_row_names=F, show_row_dend=myroworder, cluster_rows=F)
+
+>  hmap_YnhEnh=Heatmap(All_df2$YngEnh, name="EnhAnn", col=c("darkblue", "snow3", "steelblue1"), width=unit(0.6, "cm"), show_row_names=F, show_row_dend=myroworder, cluster_rows=F)
+
+> hmap_YngBP=Heatmap(All_df2$YngBivProm, name="BivProm", col=c("brown", "snow3"), width=unit(0.6, "cm"), show_row_names=F, show_row_dend=myroworder, cluster_rows=F)
+
+
+
+
+
+
+
+
+
+
+
+
+
