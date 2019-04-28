@@ -38,7 +38,7 @@ DNA methylation was profiled using ERRBS in young (n=7) and aged HSCe (n=5) (see
 
  
 ## Epigenetic changes predisposing to AML
-In order to determine if age-associated epigenetic changes predispose for myeloid malignancies, we utilized published data sets to identify clusters of differentially methylated regions (DMR) or H3K27ac peaks that are altered with normal HSCe aging and in acute myeloid leukemia (AML).
+In order to determine if age-associated epigenetic changes predispose for myeloid malignancies, we utilized published data sets to identify clusters of differentially methylated regions (DMR) or histone ChIPseq peaks that are altered with normal HSCe aging and in acute myeloid leukemia (AML).
 
 ### DNA methylation
 The percent methylation for each age-associated DMR (n=529) was calculated for each young and aged HSCe sample, and AML patient (n=119, see 'PercMethofDMR.py'). k-means clustering was then performed and boxplots generated for each cluster.
@@ -46,10 +46,11 @@ The percent methylation for each age-associated DMR (n=529) was calculated for e
   - The optimal number of clusters was determined using the gap statistic method with the R-package factoExtra
    - k-means clustering of hypomethylated and hypermethylated DMR was performed using R
   
-### H3K27ac
-The log2(H3K27ac/Input) enrichment was calculated for AML blasts (n=52) and young and aged HSCe at regions with reduced H3K27ac with age. k-means clustering was then performed and boxplots generated for each cluster.
-  - H3K27ac ChIP-seq data is from McKeown et al., 2017 (SRP103200)
-  - Bigwig files containing the log2(H3K27ac/Input) were generated using deepTools2 bamCompare (version 2.5.6) (see 'bamCompare.py')
+### ChIPseq
+The log2(IP/Input) enrichment was calculated for AML blasts and young and aged HSCe at regions with altered enhancers, active TSS, or bivalent promoters in aged HSCe. Enrichment was calculated for the defining histone marks for each category (ie H3K27ac and H3K4me1 for enhancers). k-means clustering was then performed and boxplots generated for each cluster.
+  - H3K27ac ChIP-seq data is from McKeown et al., 2017 (SRP103200) and Yi et al., 2019; EGAD00001002340 and EGAD00001002418 
+  - H3K4me1, H3K4me3, and H3K27me3 ChIP-seq is from Yi et al., 2019; EGAD00001002340 and EGAD00001002418 
+  - Bigwig files containing the log2(IP/Input) were generated using deepTools2 bamCompare (version 2.5.6) (see 'bamCompare.py')
   - Enrichment for each differential peak was calculated using deepTools2 multiBigwigSummary (version 2.5.6)
   - The optimal number of clusters was determined using the R-package factoExtra and the gap statistic method. 
   
@@ -79,6 +80,7 @@ See 'DifferentialGeneExpressionAnalysis.txt'
   
 ## Published data sets used for analysis:
 - AML H3K27ac ChIPseq data: McKeown et al., 2017; SRA accession number SRP103200
+- AML H3K27ac, H3K4me1, H3K4me3, and H3K27me3 ChIPseq data: Yi et al., 2019; EGAD00001002340 and EGAD00001002418 
 - AML ERRBS mC data: Glass et al., 2017; GEO accession number GSE98350
 - Gene annotations for Gencode v19 (Ensembl 74): Gencode, http://www.gencodegenes.org/releases/19.html
 - Genome sequence for GRCh37.p13: Gencode, http://www.gencodegenes.org/releases/19.html
