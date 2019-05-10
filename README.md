@@ -56,7 +56,7 @@ The log2(IP/Input) enrichment was calculated for AML blasts and young and aged H
   
   
 ## Transcriptional changes with aging (RNA-seq)
-RNA-seq was performed on young and aged HSCe (n=10 per age group). These libraries were 2nd-stranded paired-end 50bp and contained ERCC spike-ins. Additionally, RNA-seq was performed on CD34+ with shLMNA knockdown (n=8 biological replicates). These libraries were paired-end 1st-stranded, 75 bp and contain ERCC spike-ins. RNA-seq was also performed on CD34+ with sgKL6 knockout (n=6 replicates); these libraries were paired-end 1st-stranded, 75 bp and contained ERCC spike-ins.
+RNA-seq was performed on young and aged HSCe (n=10 per age group). These libraries were 2nd-stranded paired-end 50bp and contained ERCC spike-ins. Additionally, RNA-seq was performed on CD34+ with shLMNA knockdown (n=8 biological replicates). These libraries were paired-end 1st-stranded, 75 bp and contain ERCC spike-ins. RNA-seq was also performed on CD34+ with sgKL6 knockout (n=4 replicates); these libraries were paired-end 1st-stranded, 75 bp and contained ERCC spike-ins.
 
 
 ### Data alignment and processing
